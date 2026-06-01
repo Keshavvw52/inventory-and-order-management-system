@@ -9,6 +9,14 @@ A full-stack web app for managing products, customers, and orders — with autom
 
 ---
 
+## Live Links
+
+| Item | Link |
+|---|---|
+| Frontend | https://inventory-and-order-management-syst-roan.vercel.app/ |
+| Backend API | https://inventory-and-order-management-system-v0lu.onrender.com/api/v1 |
+| Backend Docker Hub Image | https://hub.docker.com/r/keshavv52/inventory-backend |
+
 ## What it does
 
 - **Products** — add, edit, delete products with SKU and stock quantity
@@ -137,6 +145,14 @@ The repo includes a `render.yaml` blueprint. To deploy:
 After deploy, set `CORS_ORIGINS` in the Render dashboard to your frontend URL.
 
 For the frontend, deploy via [Vercel](https://vercel.com) by pointing it at the `frontend/` directory and setting `VITE_API_BASE_URL` to your Render backend URL.
+
+If you need the deployed links quickly:
+
+| Service | URL |
+|---|---|
+| Frontend | https://inventory-and-order-management-syst-roan.vercel.app/ |
+| Backend API | https://inventory-and-order-management-system-v0lu.onrender.com/api/v1 |
+| Backend Docker Hub | https://hub.docker.com/r/keshavv52/inventory-backend |
 
 ---
 
