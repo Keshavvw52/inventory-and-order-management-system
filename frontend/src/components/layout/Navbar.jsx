@@ -1,8 +1,8 @@
 import React from "react";
 import { useLocation } from "react-router-dom";
-import { Bell, User } from "lucide-react";
+import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
-const Navbar = () => {
+const Navbar = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileSidebar }) => {
   const location = useLocation();
 
   const getPageTitle = () => {
@@ -19,49 +19,25 @@ const Navbar = () => {
 
   return (
     <header className="navbar">
-      {/* Title */}
-      <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-primary)" }}>
-        {getPageTitle()}
-      </h2>
-
-      {/* Actions / Profile info */}
-      <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
-        {/* Mock Notification Icon */}
-        <button
-          style={{
-            background: "none",
-            border: "none",
-            color: "var(--text-secondary)",
-            cursor: "pointer",
-            position: "relative",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "8px",
-            borderRadius: "50%",
-            transition: "background-color 0.15s"
-          }}
-          onMouseEnter={(e) => e.target.style.backgroundColor = "#f1f5f9"}
-          onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
-        >
-          <Bell size={20} />
-          <span 
-            style={{ 
-              position: "absolute", 
-              top: "6px", 
-              right: "6px", 
-              width: "8px", 
-              height: "8px", 
-              borderRadius: "50%", 
-              backgroundColor: "var(--danger)" 
-            }}
-          />
+      <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+        <button className="icon-button mobile-only" onClick={onOpenMobileSidebar}>
+          <Menu size={18} />
         </button>
+        <button className="icon-button desktop-only" onClick={onToggleSidebar}>
+          {isSidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+        </button>
+        <div>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--text-primary)" }}>
+            {getPageTitle()}
+          </h2>
+          <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", marginTop: "2px" }}>
+            {location.pathname === "/" ? "Dashboard / Overview" : "Operations workspace"}
+          </p>
+        </div>
+      </div>
 
-        <div style={{ width: "1px", height: "24px", backgroundColor: "var(--surface-border)" }} />
-
-        {/* Mock User Details */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }} className="desktop-only">
           <div 
             style={{ 
               width: "36px", 
@@ -80,7 +56,7 @@ const Navbar = () => {
           </div>
           <div style={{ display: "flex", flexDirection: "column", justifyItems: "center" }}>
             <span style={{ fontSize: "0.8125rem", fontWeight: 700, color: "var(--text-primary)" }}>
-              Keshav Sharma
+              Keshav Kumar
             </span>
             <span style={{ fontSize: "0.6875rem", fontWeight: 500, color: "var(--text-muted)", marginTop: "-2px" }}>
               Administrator

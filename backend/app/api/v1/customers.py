@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.core.database import get_db
-from app.schemas.customer import CustomerCreate, CustomerResponse
+from app.schemas.customer import CustomerCreate, CustomerResponse, CustomerUpdate
 from app.services.customer import customer_service
 
 router = APIRouter(prefix="/customers", tags=["Customers"])
@@ -22,6 +22,11 @@ def list_customers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db
 def get_customer(customer_id: int, db: Session = Depends(get_db)):
     """Retrieve details of a customer by ID."""
     return customer_service.get_customer_by_id(db, customer_id)
+
+@router.put("/{customer_id}", response_model=CustomerResponse)
+def update_customer(customer_id: int, customer_in: CustomerUpdate, db: Session = Depends(get_db)):
+    """Update an existing customer."""
+    return customer_service.update_customer(db, customer_id, obj_in=customer_in)
 
 @router.delete("/{customer_id}", response_model=CustomerResponse)
 def delete_customer(customer_id: int, db: Session = Depends(get_db)):

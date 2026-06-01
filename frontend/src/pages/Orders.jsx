@@ -1,76 +1,87 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
-import { Plus, Trash2, Eye, Calendar, User, ShoppingBag, PlusCircle, MinusCircle, AlertCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  Calendar,
+  Eye,
+  Plus,
+  PlusCircle,
+  ShoppingBag,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 
-import { getOrders, createOrder, deleteOrder } from "../services/orderService";
+import { getOrders, createOrder, deleteOrder, updateOrderStatus } from "../services/orderService";
 import { getCustomers } from "../services/customerService";
 import { getProducts } from "../services/productService";
 import Button from "../components/ui/Button";
 import Card from "../components/ui/Card";
 import Table from "../components/ui/Table";
 import Modal from "../components/ui/Modal";
+import Badge from "../components/ui/Badge";
+import ErrorState from "../components/ui/ErrorState";
+import PageHeader from "../components/ui/PageHeader";
+import { formatCurrency, formatDateTime } from "../utils/formatters";
+import { getInventoryBadge, getOrderStatus, orderStatusOptions } from "../utils/status";
+
+const blankLineItem = { product_id: "", quantity: 1 };
 
 const Orders = () => {
   const queryClient = useQueryClient();
-  
-  // Modals States
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [orderToDelete, setOrderToDelete] = useState(null);
-
-  // Form State for Order creation
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [orderItems, setOrderItems] = useState([{ product_id: "", quantity: 1 }]);
-  const [runningTotal, setRunningTotal] = useState(0);
+  const [orderItems, setOrderItems] = useState([{ ...blankLineItem }]);
+  const [orderToDelete, setOrderToDelete] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null);
 
-  // 1. Fetch Orders, Customers, and Products
   const { data: orders = [], isLoading: isOrdersLoading, error: ordersError } = useQuery({
     queryKey: ["orders"],
     queryFn: getOrders,
   });
 
-  const { data: customers = [], isLoading: isCustomersLoading } = useQuery({
+  const { data: customers = [] } = useQuery({
     queryKey: ["customers"],
     queryFn: getCustomers,
     enabled: isCreateModalOpen,
   });
 
-  const { data: products = [], isLoading: isProductsLoading } = useQuery({
+  const { data: products = [] } = useQuery({
     queryKey: ["products"],
     queryFn: getProducts,
     enabled: isCreateModalOpen,
   });
 
-  // Calculate Running Total Preview Client-side
-  useEffect(() => {
-    let total = 0;
-    orderItems.forEach((item) => {
-      if (item.product_id) {
-        const prod = products.find((p) => p.id === Number(item.product_id));
-        if (prod) {
-          total += Number(prod.price) * item.quantity;
-        }
-      }
-    });
-    setRunningTotal(total);
-  }, [orderItems, products]);
-
-  // Mutations
   const createMutation = useMutation({
     mutationFn: createOrder,
     onSuccess: () => {
       queryClient.invalidateQueries(["orders"]);
+      queryClient.invalidateQueries(["products"]);
       queryClient.invalidateQueries(["dashboardStats"]);
-      toast.success("Order placed successfully!");
-      setIsCreateModalOpen(false);
+      toast.success("Order placed successfully.");
       resetOrderForm();
+      setIsCreateModalOpen(false);
     },
-    onError: (err) => {
-      // Handles FastAPI detailed stock check dictionary errors
-      const detail = err.message;
-      toast.error(detail || "Failed to place order.");
+    onError: (requestError) => {
+      const validationMessage = requestError.validationErrors?.[0];
+      toast.error(validationMessage || requestError.message || "Failed to place order.");
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }) => updateOrderStatus(id, status),
+    onSuccess: (updatedOrder) => {
+      queryClient.invalidateQueries(["orders"]);
+      queryClient.invalidateQueries(["products"]);
+      queryClient.invalidateQueries(["dashboardStats"]);
+      queryClient.invalidateQueries(["recentOrders"]);
+      setSelectedOrder(updatedOrder);
+      toast.success("Order status updated.");
+    },
+    onError: (requestError) => {
+      toast.error(requestError.message || "Failed to update order status.");
     },
   });
 
@@ -78,354 +89,395 @@ const Orders = () => {
     mutationFn: deleteOrder,
     onSuccess: () => {
       queryClient.invalidateQueries(["orders"]);
+      queryClient.invalidateQueries(["products"]);
       queryClient.invalidateQueries(["dashboardStats"]);
-      toast.success("Order canceled and inventory stock restored!");
+      toast.success("Order cancelled and stock restored.");
       setIsDeleteModalOpen(false);
+      setOrderToDelete(null);
     },
-    onError: (err) => {
-      toast.error(err.message || "Failed to cancel order.");
+    onError: (requestError) => {
+      toast.error(requestError.message || "Failed to cancel order.");
     },
   });
 
+  const selectedCustomer = customers.find((customer) => customer.id === Number(selectedCustomerId));
+
+  const orderValidation = useMemo(() => {
+    const warnings = [];
+    let total = 0;
+
+    orderItems.forEach((item, index) => {
+      if (!item.product_id) {
+        warnings.push(`Select a product for line ${index + 1}.`);
+        return;
+      }
+
+      const product = products.find((entry) => entry.id === Number(item.product_id));
+      if (!product) {
+        warnings.push(`Product on line ${index + 1} is unavailable.`);
+        return;
+      }
+
+      if (item.quantity <= 0) {
+        warnings.push(`Quantity on line ${index + 1} must be at least 1.`);
+      }
+
+      if (product.stock_quantity < item.quantity) {
+        warnings.push(`Only ${product.stock_quantity} units of ${product.name} are available.`);
+      }
+
+      total += Number(product.price) * item.quantity;
+    });
+
+    return {
+      warnings,
+      total,
+      canSubmit: selectedCustomerId && orderItems.length > 0 && warnings.length === 0,
+    };
+  }, [orderItems, products, selectedCustomerId]);
+
   const resetOrderForm = () => {
     setSelectedCustomerId("");
-    setOrderItems([{ product_id: "", quantity: 1 }]);
-  };
-
-  const handleCreateOpen = () => {
-    resetOrderForm();
-    setIsCreateModalOpen(true);
-  };
-
-  const handleDeleteOpen = (order) => {
-    setOrderToDelete(order);
-    setIsDeleteModalOpen(true);
-  };
-
-  const handleAddItemLine = () => {
-    setOrderItems([...orderItems, { product_id: "", quantity: 1 }]);
-  };
-
-  const handleRemoveItemLine = (index) => {
-    const list = [...orderItems];
-    list.splice(index, 1);
-    setOrderItems(list);
+    setOrderItems([{ ...blankLineItem }]);
   };
 
   const handleItemChange = (index, field, value) => {
-    const list = [...orderItems];
-    list[index][field] = value;
-    setOrderItems(list);
-  };
-
-  const handlePlaceOrderSubmit = () => {
-    // Form Validations
-    if (!selectedCustomerId) {
-      toast.error("Please select a customer.");
-      return;
-    }
-
-    if (orderItems.some((item) => !item.product_id)) {
-      toast.error("Please select a product for all lines.");
-      return;
-    }
-
-    // Prepare payload
-    const payload = {
-      customer_id: Number(selectedCustomerId),
-      items: orderItems.map((item) => ({
-        product_id: Number(item.product_id),
-        quantity: Number(item.quantity)
-      }))
-    };
-
-    // Check stock locally first for helper UX warnings
-    let stockErrors = [];
-    orderItems.forEach((item) => {
-      const prod = products.find((p) => p.id === Number(item.product_id));
-      if (prod && prod.stock_quantity < item.quantity) {
-        stockErrors.push(`Requested ${item.quantity} units of '${prod.name}' but only ${prod.stock_quantity} are in stock.`);
-      }
-    });
-
-    if (stockErrors.length > 0) {
-      toast.error(stockErrors[0]);
-      return;
-    }
-
-    createMutation.mutate(payload);
-  };
-
-  const confirmDelete = () => {
-    if (orderToDelete) {
-      deleteMutation.mutate(orderToDelete.id);
-    }
+    setOrderItems((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...item,
+              [field]: field === "quantity" ? Math.max(1, Number(value || 1)) : value,
+            }
+          : item,
+      ),
+    );
   };
 
   const tableHeaders = [
-    { label: "Order ID", style: { width: "15%" } },
-    { label: "Date Placed", style: { width: "25%" } },
-    { label: "Total Amount", style: { width: "20%" } },
-    { label: "Items Count", style: { width: "20%" } },
-    { label: "Actions", style: { width: "20%", textAlign: "right" } },
+    { label: "Order ID", style: { width: "12%" } },
+    { label: "Customer", style: { width: "26%" } },
+    { label: "Date", style: { width: "20%" } },
+    { label: "Items", style: { width: "12%" } },
+    { label: "Amount", style: { width: "15%" } },
+    { label: "Status", style: { width: "15%" } },
+    { label: "Actions", style: { width: "10%", textAlign: "right" } },
   ];
 
   return (
-    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      
-      {/* Header and Controls */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "var(--text-secondary)" }}>
-          Manage placed orders & fulfillment
-        </h3>
-        <Button onClick={handleCreateOpen}>
-          <Plus size={18} />
-          Create Order
-        </Button>
-      </div>
+    <div className="page-stack animate-fade-in">
+      <PageHeader
+        eyebrow="Sales / Orders"
+        title="Order Operations"
+        description="Place customer orders, review fulfillment history, and monitor active transaction volume."
+        meta={<div className="summary-inline"><span>{orders.length} total orders</span></div>}
+        action={
+          <Button onClick={() => { resetOrderForm(); setIsCreateModalOpen(true); }}>
+            <Plus size={16} />
+            Create Order
+          </Button>
+        }
+      />
 
-      {/* Main Table Card */}
-      <Card>
+      <Card title="Order Queue" subtitle="Review every order with customer context, item counts, and operational status.">
         {ordersError ? (
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", color: "var(--danger)", padding: "20px" }}>
-            <AlertCircle size={24} />
-            <div>
-              <h4 style={{ fontWeight: 700 }}>Error loading orders</h4>
-              <p style={{ fontSize: "0.875rem", marginTop: "2px" }}>{ordersError.message}</p>
-            </div>
-          </div>
+          <ErrorState title="Unable to load orders" message={ordersError.message} />
         ) : (
           <Table
             headers={tableHeaders}
             isLoading={isOrdersLoading}
             isEmpty={orders.length === 0}
-            emptyMessage="No orders found. Create your first order to get started."
+            emptyTitle="No orders yet"
+            emptyMessage="Create your first order to begin tracking sales and inventory consumption."
+            emptyIcon={ShoppingBag}
+            emptyAction={<Button onClick={() => setIsCreateModalOpen(true)}>Create Order</Button>}
           >
-            {orders.map((order) => (
-              <tr key={order.id} className="table-row">
-                <td className="td" style={{ fontWeight: 700 }}>
-                  #{order.id}
-                </td>
-                <td className="td">
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--text-secondary)" }}>
-                    <Calendar size={14} />
-                    {new Date(order.created_at).toLocaleString()}
-                  </div>
-                </td>
-                <td className="td" style={{ fontWeight: 700, color: "var(--primary)" }}>
-                  ${Number(order.total_amount).toFixed(2)}
-                </td>
-                <td className="td" style={{ fontWeight: 600 }}>
-                  {order.items?.reduce((acc, curr) => acc + curr.quantity, 0) || 0} units
-                </td>
-                <td className="td" style={{ textAlign: "right" }}>
-                  <div style={{ display: "inline-flex", gap: "8px" }}>
-                    <Link
-                      to={`/orders/${order.id}`}
-                      title="View Order Details"
-                      style={{
-                        color: "var(--text-secondary)",
-                        padding: "6px",
-                        borderRadius: "6px",
-                        display: "flex",
-                        alignItems: "center"
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#e2e8f0"}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                    >
-                      <Eye size={16} />
-                    </Link>
-                    <button
-                      title="Cancel Order & Restock"
-                      onClick={() => handleDeleteOpen(order)}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        color: "var(--danger)",
-                        padding: "6px",
-                        borderRadius: "6px",
-                        transition: "all 0.15s"
-                      }}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = "var(--danger-light)"}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {orders.map((order) => {
+              const status = getOrderStatus(order.status);
+              const itemCount = order.items?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+
+              return (
+                <tr key={order.id} className="table-row">
+                  <td className="td">
+                    <span className="entity-title">#{order.id}</span>
+                  </td>
+                  <td className="td">
+                    <div className="entity-cell">
+                      <span className="entity-title">{order.customer?.full_name ?? "Unknown customer"}</span>
+                      <span className="entity-meta">{order.customer?.email ?? "No email"}</span>
+                    </div>
+                  </td>
+                  <td className="td">
+                    <div className="stack-inline compact">
+                      <Calendar size={14} />
+                      {formatDateTime(order.created_at)}
+                    </div>
+                  </td>
+                  <td className="td" style={{ fontWeight: 700 }}>
+                    {itemCount} items
+                  </td>
+                  <td className="td" style={{ fontWeight: 800, color: "var(--primary)" }}>
+                    {formatCurrency(order.total_amount)}
+                  </td>
+                  <td className="td">
+                    <Badge variant={status.variant}>{status.label}</Badge>
+                  </td>
+                  <td className="td" style={{ textAlign: "right" }}>
+                    <div className="row-actions">
+                      <button className="table-icon-button" onClick={() => { setSelectedOrder(order); setIsDetailsModalOpen(true); }} title="View order details">
+                        <Eye size={16} />
+                      </button>
+                      <button className="table-icon-button danger" onClick={() => { setOrderToDelete(order); setIsDeleteModalOpen(true); }} title="Cancel order">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </Table>
         )}
       </Card>
 
-      {/* Place Order Composer Modal */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        title="Compose New Customer Order"
+        title="Create customer order"
         size="lg"
         footer={
           <>
             <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
               Cancel
             </Button>
-            <div style={{ marginLeft: "auto", marginRight: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "0.8125rem", color: "var(--text-secondary)", fontWeight: 600 }}>PREVIEW TOTAL:</span>
-              <span style={{ fontSize: "1.25rem", fontWeight: 800, color: "var(--primary)", fontFamily: "'Outfit'" }}>
-                ${runningTotal.toFixed(2)}
-              </span>
-            </div>
-            <Button 
-              onClick={handlePlaceOrderSubmit} 
-              isLoading={createMutation.isPending}
-            >
+            <Button onClick={() => {
+              if (!orderValidation.canSubmit) {
+                toast.error(orderValidation.warnings[0] || "Resolve order warnings before submitting.");
+                return;
+              }
+
+              createMutation.mutate({
+                customer_id: Number(selectedCustomerId),
+                items: orderItems.map((item) => ({
+                  product_id: Number(item.product_id),
+                  quantity: Number(item.quantity),
+                })),
+              });
+            }} isLoading={createMutation.isPending} disabled={!orderValidation.canSubmit}>
               Place Order
             </Button>
           </>
         }
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          
-          {/* Customer Selection */}
-          <div className="form-group">
-            <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <User size={14} /> Select Customer
-            </label>
-            <select
-              value={selectedCustomerId}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
-              className="form-input"
-            >
-              <option value="">-- Choose a Customer from Registry --</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.full_name} ({c.email})
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="create-order-layout">
+          <div className="create-order-form">
+            <div className="form-group">
+              <label className="form-label">Customer</label>
+              <select className="form-input" value={selectedCustomerId} onChange={(event) => setSelectedCustomerId(event.target.value)}>
+                <option value="">Select a customer</option>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.full_name} ({customer.email})
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          {/* Items Composer List */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            <label className="form-label" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <ShoppingBag size={14} /> Order Line Items
-            </label>
-            
-            {orderItems.map((item, idx) => {
-              const selectedProd = products.find((p) => p.id === Number(item.product_id));
-              const isOutOfStock = selectedProd && selectedProd.stock_quantity < item.quantity;
-              
-              return (
-                <div 
-                  key={idx} 
-                  style={{ 
-                    display: "flex", 
-                    gap: "12px", 
-                    alignItems: "flex-start", 
-                    backgroundColor: "#f8fafc", 
-                    padding: "16px", 
-                    borderRadius: "var(--radius-sm)",
-                    border: "1px solid var(--surface-border)"
-                  }}
-                >
-                  {/* Select Product */}
-                  <div style={{ flex: 2, display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <select
-                      value={item.product_id}
-                      onChange={(e) => handleItemChange(idx, "product_id", e.target.value)}
-                      className="form-input"
-                    >
-                      <option value="">-- Select Product --</option>
-                      {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} (${Number(p.price).toFixed(2)}) [Stock: {p.stock_quantity}]
-                        </option>
-                      ))}
-                    </select>
-                    {selectedProd && (
-                      <span style={{ fontSize: "0.75rem", color: isOutOfStock ? "var(--danger)" : "var(--text-secondary)", fontWeight: 500 }}>
-                        Available Stock: {selectedProd.stock_quantity} units
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Quantity Input */}
-                  <div style={{ width: "120px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                    <input
-                      type="number"
-                      min="1"
-                      className="form-input"
-                      value={item.quantity}
-                      onChange={(e) => handleItemChange(idx, "quantity", Math.max(1, Number(e.target.value)))}
-                    />
-                  </div>
-
-                  {/* Row total preview */}
-                  <div style={{ width: "100px", padding: "10px 0", fontWeight: 700, textAlign: "right" }}>
-                    ${selectedProd ? (Number(selectedProd.price) * item.quantity).toFixed(2) : "0.00"}
-                  </div>
-
-                  {/* Remove line */}
-                  <button
-                    disabled={orderItems.length === 1}
-                    onClick={() => handleRemoveItemLine(idx)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: orderItems.length === 1 ? "var(--text-muted)" : "var(--danger)",
-                      cursor: orderItems.length === 1 ? "not-allowed" : "pointer",
-                      padding: "8px"
-                    }}
-                  >
-                    <Trash2 size={16} />
-                  </button>
+            <div className="order-line-items">
+              <div className="section-header-inline">
+                <div>
+                  <h4>Order Items</h4>
+                  <p>Build the order with inventory-aware validation.</p>
                 </div>
-              );
-            })}
+                <Button variant="outline" onClick={() => setOrderItems((current) => [...current, { ...blankLineItem }])}>
+                  <PlusCircle size={16} />
+                  Add Line
+                </Button>
+              </div>
 
-            <button
-              type="button"
-              onClick={handleAddItemLine}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "8px",
-                padding: "10px",
-                border: "2px dashed var(--surface-border)",
-                backgroundColor: "transparent",
-                color: "var(--primary)",
-                borderRadius: "var(--radius-sm)",
-                fontWeight: 600,
-                fontSize: "0.8125rem",
-                cursor: "pointer",
-                transition: "all 0.15s"
-              }}
-              onMouseEnter={(e) => e.target.style.borderColor = "var(--primary)"}
-              onMouseLeave={(e) => e.target.style.borderColor = "var(--surface-border)"}
-            >
-              <PlusCircle size={14} /> Add Line Item
-            </button>
+              {orderItems.map((item, index) => {
+                const product = products.find((entry) => entry.id === Number(item.product_id));
+                const inventoryBadge = product ? getInventoryBadge(product.stock_quantity) : null;
+                const isInsufficient = product && product.stock_quantity < item.quantity;
+
+                return (
+                  <div className="order-line-card" key={`${index}-${item.product_id}`}>
+                    <div className="order-line-grid">
+                      <div className="form-group">
+                        <label className="form-label">Product</label>
+                        <select
+                          className="form-input"
+                          value={item.product_id}
+                          onChange={(event) => handleItemChange(index, "product_id", event.target.value)}
+                        >
+                          <option value="">Select product</option>
+                          {products.map((productOption) => (
+                            <option key={productOption.id} value={productOption.id}>
+                              {productOption.name} ({formatCurrency(productOption.price)})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label">Quantity</label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="form-input"
+                          value={item.quantity}
+                          onChange={(event) => handleItemChange(index, "quantity", event.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="order-line-footer">
+                      <div className="stack-inline">
+                        {inventoryBadge ? <Badge variant={inventoryBadge.variant}>{inventoryBadge.label}</Badge> : null}
+                        {product ? <span className="entity-meta">Available: {product.stock_quantity}</span> : null}
+                      </div>
+                      <div className="stack-inline">
+                        <strong>{product ? formatCurrency(Number(product.price) * item.quantity) : formatCurrency(0)}</strong>
+                        <button
+                          className="table-icon-button danger"
+                          disabled={orderItems.length === 1}
+                          onClick={() => setOrderItems((current) => current.filter((_, currentIndex) => currentIndex !== index))}
+                        >
+                          <XCircle size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {isInsufficient ? (
+                      <div className="inline-warning">
+                        <AlertTriangle size={14} />
+                        Requested quantity exceeds available stock.
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
+          <Card title="Order Summary" className="summary-card" bodyClassName="summary-card-body">
+            <div className="summary-stack">
+              <div className="summary-section">
+                <span className="summary-label">Customer</span>
+                <strong>{selectedCustomer?.full_name || "Select a customer"}</strong>
+                <span className="entity-meta">{selectedCustomer?.email || "No customer selected yet"}</span>
+              </div>
+
+              <div className="summary-section">
+                <span className="summary-label">Items</span>
+                <strong>{orderItems.length} lines</strong>
+                <span className="entity-meta">
+                  {orderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0)} total units
+                </span>
+              </div>
+
+              <div className="summary-total">
+                <span>Total</span>
+                <strong>{formatCurrency(orderValidation.total)}</strong>
+              </div>
+
+              {orderValidation.warnings.length > 0 ? (
+                <div className="warning-panel">
+                  <div className="stack-inline">
+                    <AlertTriangle size={16} />
+                    <strong>Inventory warnings</strong>
+                  </div>
+                  <ul>
+                    {orderValidation.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <Badge variant="success">Ready to submit</Badge>
+              )}
+            </div>
+          </Card>
         </div>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={isDetailsModalOpen}
+        onClose={() => setIsDetailsModalOpen(false)}
+        title={`Order #${selectedOrder?.id ?? ""}`}
+        size="lg"
+      >
+        {selectedOrder ? (
+          <div className="details-drawer">
+              <div className="details-grid">
+                <div className="details-block">
+                  <span className="summary-label">Customer</span>
+                  <strong>{selectedOrder.customer?.full_name ?? "Unknown customer"}</strong>
+                  <span className="entity-meta">{selectedOrder.customer?.email}</span>
+                </div>
+                <div className="details-block">
+                  <span className="summary-label">Order Date</span>
+                  <strong>{formatDateTime(selectedOrder.created_at)}</strong>
+                </div>
+                <div className="details-block">
+                  <span className="summary-label">Status</span>
+                  {(() => {
+                    const status = getOrderStatus(selectedOrder.status);
+                    return <Badge variant={status.variant}>{status.label}</Badge>;
+                  })()}
+                  <select
+                    className="form-input"
+                    style={{ marginTop: "8px" }}
+                    value={selectedOrder.status ?? "placed"}
+                    disabled={statusMutation.isPending}
+                    onChange={(event) =>
+                      statusMutation.mutate({
+                        id: selectedOrder.id,
+                        status: event.target.value,
+                      })
+                    }
+                  >
+                    {orderStatusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="details-block">
+                  <span className="summary-label">Total</span>
+                  <strong>{formatCurrency(selectedOrder.total_amount)}</strong>
+                </div>
+            </div>
+
+            <div className="details-list">
+              {selectedOrder.items?.map((item) => (
+                <div className="details-line-item" key={item.id}>
+                  <div>
+                    <strong>{item.product?.name ?? "Deleted product"}</strong>
+                    <div className="entity-meta">
+                      {item.product?.sku ?? "No SKU"} · Qty {item.quantity}
+                    </div>
+                  </div>
+                  <strong>{formatCurrency(Number(item.unit_price) * item.quantity)}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
       <Modal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
-        title="Cancel Order & Restore Inventory"
+        title="Cancel order"
         footer={
           <>
             <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>
-              Back
+              Keep Order
             </Button>
-            <Button 
-              variant="danger" 
-              onClick={confirmDelete}
+            <Button
+              variant="danger"
+              onClick={() => orderToDelete && deleteMutation.mutate(orderToDelete.id)}
               isLoading={deleteMutation.isPending}
             >
               Cancel Order
@@ -433,16 +485,13 @@ const Orders = () => {
           </>
         }
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <p style={{ color: "var(--text-secondary)", fontSize: "0.95rem" }}>
-            Are you sure you want to cancel and delete order <strong>#{orderToDelete?.id}</strong>?
+        <div className="dialog-copy">
+          <p>
+            Cancel order <strong>#{orderToDelete?.id}</strong> and restore all reserved stock back into inventory?
           </p>
-          <p style={{ color: "var(--success)", fontSize: "0.8125rem", fontWeight: 600 }}>
-            ✨ All associated products will have their stock levels restored automatically.
-          </p>
+          <p className="dialog-warning">This action removes the order record from the system.</p>
         </div>
       </Modal>
-
     </div>
   );
 };

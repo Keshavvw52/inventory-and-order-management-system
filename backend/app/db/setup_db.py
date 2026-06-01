@@ -2,33 +2,35 @@ import sys
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
+from app.core.config import settings
+
 def setup_database():
-    # Use postgres system DB to create our application DB
     conn_params = {
-        "dbname": "postgres",
-        "user": "postgres",
-        "password": "keshavvw52@star",
-        "host": "localhost",
-        "port": "5432"
+        "dbname": settings.POSTGRES_ADMIN_DB,
+        "user": settings.POSTGRES_USER,
+        "password": settings.POSTGRES_PASSWORD,
+        "host": settings.POSTGRES_HOST,
+        "port": str(settings.POSTGRES_PORT),
     }
-    
+
+    target_database = settings.POSTGRES_DB
+
     print("Connecting to local PostgreSQL database...")
     try:
         conn = psycopg2.connect(**conn_params)
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cursor = conn.cursor()
-        
-        # Check if database exists
-        cursor.execute("SELECT 1 FROM pg_catalog.pg_database WHERE datname = 'inventory_db';")
+
+        cursor.execute("SELECT 1 FROM pg_catalog.pg_database WHERE datname = %s;", (target_database,))
         exists = cursor.fetchone()
-        
+
         if not exists:
-            print("Database 'inventory_db' does not exist. Creating...")
-            cursor.execute("CREATE DATABASE inventory_db;")
-            print("Database 'inventory_db' created successfully.")
+            print(f"Database '{target_database}' does not exist. Creating...")
+            cursor.execute(f'CREATE DATABASE "{target_database}";')
+            print(f"Database '{target_database}' created successfully.")
         else:
-            print("Database 'inventory_db' already exists.")
-            
+            print(f"Database '{target_database}' already exists.")
+
         cursor.close()
         conn.close()
     except Exception as e:

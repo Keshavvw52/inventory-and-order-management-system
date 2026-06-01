@@ -1,0 +1,10 @@
+# Backend dockerignore
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.*
+*.log
+alembic.log

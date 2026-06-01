@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.core.database import get_db
-from app.schemas.order import OrderCreate, OrderResponse
+from app.schemas.order import OrderCreate, OrderResponse, OrderStatusUpdate
 from app.services.order import order_service
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
@@ -17,6 +17,11 @@ def create_order(order_in: OrderCreate, db: Session = Depends(get_db)):
 def list_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     """List all orders in the system."""
     return order_service.get_all_orders(db, skip=skip, limit=limit)
+
+@router.patch("/{order_id}/status", response_model=OrderResponse)
+def update_order_status(order_id: int, status_in: OrderStatusUpdate, db: Session = Depends(get_db)):
+    """Update an order's status."""
+    return order_service.update_order_status(db, order_id, status_in)
 
 @router.get("/{order_id}", response_model=OrderResponse)
 def get_order(order_id: int, db: Session = Depends(get_db)):

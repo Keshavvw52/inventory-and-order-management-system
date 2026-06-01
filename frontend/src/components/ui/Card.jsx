@@ -3,6 +3,7 @@ import React from "react";
 const Card = ({
   children,
   title,
+  subtitle,
   headerAction,
   className = "",
   bodyClassName = "",
@@ -12,7 +13,10 @@ const Card = ({
     <div className={`card ${className}`} {...props}>
       {(title || headerAction) && (
         <div className="card-header">
-          {title && <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text-primary)" }}>{title}</h3>}
+          <div>
+            {title && <h3 style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text-primary)" }}>{title}</h3>}
+            {subtitle ? <p className="card-subtitle">{subtitle}</p> : null}
+          </div>
           {headerAction && <div className="card-header-action">{headerAction}</div>}
         </div>
       )}

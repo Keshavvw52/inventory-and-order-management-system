@@ -1,4 +1,5 @@
 import React from "react";
+import EmptyState from "./EmptyState";
 
 const Table = ({
   headers = [],
@@ -6,6 +7,9 @@ const Table = ({
   className = "",
   isEmpty = false,
   emptyMessage = "No items found.",
+  emptyTitle = "Nothing to show",
+  emptyIcon,
+  emptyAction,
   isLoading = false,
   skeletonRows = 5,
 }) => {
@@ -35,7 +39,12 @@ const Table = ({
           ) : isEmpty ? (
             <tr>
               <td colSpan={headers.length} className="td" style={{ textAlign: "center", padding: "40px", color: "var(--text-secondary)" }}>
-                {emptyMessage}
+                <EmptyState
+                  icon={emptyIcon}
+                  title={emptyTitle}
+                  description={emptyMessage}
+                  action={emptyAction}
+                />
               </td>
             </tr>
           ) : (

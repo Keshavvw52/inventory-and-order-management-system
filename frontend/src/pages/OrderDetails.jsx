@@ -1,20 +1,39 @@
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
+import toast from "react-hot-toast";
 import { ArrowLeft, Calendar, User, Mail, Phone, ShoppingBag, Receipt, AlertCircle } from "lucide-react";
 
-import { getOrderById } from "../services/orderService";
+import { getOrderById, updateOrderStatus } from "../services/orderService";
+import { formatCurrency } from "../utils/formatters";
+import Badge from "../components/ui/Badge";
 import Card from "../components/ui/Card";
 import Table from "../components/ui/Table";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
+import { getOrderStatus, orderStatusOptions } from "../utils/status";
 
 const OrderDetails = () => {
   const { id } = useParams();
+  const queryClient = useQueryClient();
 
   // Fetch Order details
   const { data: order, isLoading, error } = useQuery({
     queryKey: ["orderDetails", id],
     queryFn: () => getOrderById(id),
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: (status) => updateOrderStatus(id, status),
+    onSuccess: (updatedOrder) => {
+      queryClient.setQueryData(["orderDetails", id], updatedOrder);
+      queryClient.invalidateQueries(["orders"]);
+      queryClient.invalidateQueries(["recentOrders"]);
+      queryClient.invalidateQueries(["dashboardStats"]);
+      toast.success("Order status updated.");
+    },
+    onError: (requestError) => {
+      toast.error(requestError.message || "Failed to update order status.");
+    },
   });
 
   const tableHeaders = [
@@ -87,8 +106,30 @@ const OrderDetails = () => {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--surface-border)", paddingTop: "16px" }}>
               <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>Total Value</span>
               <span style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--primary)", fontFamily: "'Outfit'" }}>
-                ${Number(order.total_amount).toFixed(2)}
+                {formatCurrency(order.total_amount)}
               </span>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", borderTop: "1px solid var(--surface-border)", paddingTop: "16px" }}>
+              <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>Status</span>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "8px", minWidth: "180px" }}>
+                {(() => {
+                  const status = getOrderStatus(order.status);
+                  return <Badge variant={status.variant}>{status.label}</Badge>;
+                })()}
+                <select
+                  className="form-input"
+                  value={order.status ?? "placed"}
+                  disabled={statusMutation.isPending}
+                  onChange={(event) => statusMutation.mutate(event.target.value)}
+                >
+                  {orderStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </Card>
@@ -160,13 +201,13 @@ const OrderDetails = () => {
                   </code>
                 </td>
                 <td className="td" style={{ fontWeight: 500 }}>
-                  ${Number(item.unit_price).toFixed(2)}
+                  {formatCurrency(item.unit_price)}
                 </td>
                 <td className="td" style={{ fontWeight: 700 }}>
                   {item.quantity}
                 </td>
                 <td className="td" style={{ fontWeight: 700, textAlign: "right", color: "var(--text-primary)" }}>
-                  ${subtotal.toFixed(2)}
+                  {formatCurrency(subtotal)}
                 </td>
               </tr>
             );

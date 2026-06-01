@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.database import ensure_order_status_schema
 from app.api.v1.router import router as api_v1_router
 
 app = FastAPI(
@@ -20,6 +21,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def sync_database_schema() -> None:
+    ensure_order_status_schema()
 
 # Include API routers
 app.include_router(api_v1_router)

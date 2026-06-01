@@ -3,7 +3,7 @@ from sqlalchemy import select
 from typing import List, Optional
 
 from app.models.customer import Customer
-from app.schemas.customer import CustomerCreate
+from app.schemas.customer import CustomerCreate, CustomerUpdate
 
 class CustomerRepository:
     def get_by_id(self, db: Session, customer_id: int) -> Optional[Customer]:
@@ -24,6 +24,14 @@ class CustomerRepository:
             phone=obj_in.phone
         )
         db.add(db_obj)
+        db.commit()
+        db.refresh(db_obj)
+        return db_obj
+
+    def update(self, db: Session, *, db_obj: Customer, obj_in: CustomerUpdate) -> Customer:
+        update_data = obj_in.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(db_obj, field, value)
         db.commit()
         db.refresh(db_obj)
         return db_obj

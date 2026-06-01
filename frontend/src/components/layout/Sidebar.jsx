@@ -1,8 +1,8 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Package, Users, ShoppingCart } from "lucide-react";
+import { LayoutDashboard, Package, Users, ShoppingCart, X } from "lucide-react";
 
-const Sidebar = () => {
+const Sidebar = ({ isCollapsed, isMobileOpen, onCloseMobile }) => {
   const location = useLocation();
 
   const menuItems = [
@@ -20,18 +20,12 @@ const Sidebar = () => {
   };
 
   return (
-    <aside className="sidebar">
+    <>
+      {isMobileOpen ? <button className="sidebar-backdrop" onClick={onCloseMobile} /> : null}
+      <aside className={`sidebar ${isCollapsed ? "sidebar-collapsed" : ""} ${isMobileOpen ? "sidebar-mobile-open" : ""}`}>
       {/* Brand Logo Header */}
-      <div 
-        style={{ 
-          height: "70px", 
-          display: "flex", 
-          alignItems: "center", 
-          padding: "0 24px", 
-          borderBottom: "1px solid #161c36" 
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <div className="sidebar-brand">
+        <div className="sidebar-brand-inner">
           <div 
             style={{ 
               width: "36px", 
@@ -49,14 +43,17 @@ const Sidebar = () => {
           >
             I
           </div>
-          <span style={{ color: "white", fontWeight: 700, fontSize: "1.05rem", letterSpacing: "0.02em" }}>
+          <span className="sidebar-brand-label" style={{ color: "white", fontWeight: 700, fontSize: "1.05rem", letterSpacing: "0.02em" }}>
             InvOrder Sys
           </span>
         </div>
+        <button className="sidebar-close-button" onClick={onCloseMobile}>
+          <X size={18} />
+        </button>
       </div>
 
       {/* Navigation Links */}
-      <nav style={{ padding: "24px 16px", display: "flex", flexDirection: "column", gap: "6px", flexGrow: 1 }}>
+      <nav className="sidebar-nav">
         {menuItems.map((item) => {
           const Icon = item.icon;
           const active = isActive(item.path);
@@ -64,44 +61,21 @@ const Sidebar = () => {
             <Link
               key={item.path}
               to={item.path}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                padding: "12px 16px",
-                borderRadius: "var(--radius-sm)",
-                color: active ? "var(--sidebar-text-active)" : "var(--sidebar-text)",
-                backgroundColor: active ? "var(--sidebar-active)" : "transparent",
-                textDecoration: "none",
-                fontWeight: 600,
-                fontSize: "0.875rem",
-                transition: "all var(--transition-fast)"
-              }}
-              onMouseEnter={(e) => {
-                if (!active) {
-                  e.target.style.backgroundColor = "var(--sidebar-hover)";
-                  e.target.style.color = "var(--sidebar-text-active)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!active) {
-                  e.target.style.backgroundColor = "transparent";
-                  e.target.style.color = "var(--sidebar-text)";
-                }
-              }}
+              className={`sidebar-link ${active ? "sidebar-link-active" : ""}`}
+              title={isCollapsed ? item.label : undefined}
+              onClick={onCloseMobile}
             >
-              <Icon size={18} style={{ opacity: active ? 1 : 0.8 }} />
-              {item.label}
+              <span className="sidebar-link-indicator" />
+              <Icon size={18} className="sidebar-link-icon" />
+              <span className="sidebar-link-label">{item.label}</span>
             </Link>
           );
         })}
       </nav>
 
-      {/* Footer Branding info */}
-      <div style={{ padding: "24px", borderTop: "1px solid #161c36", color: "#475569", fontSize: "0.75rem", fontWeight: 500 }}>
-        © 2026 Assessment v1.0
-      </div>
+      <div className="sidebar-footer" />
     </aside>
+    </>
   );
 };
 

@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
-from typing import List, Optional
+from typing import List
 
 from app.repositories.product import product_repository
 from app.schemas.product import ProductCreate, ProductUpdate
@@ -44,8 +45,14 @@ class ProductService:
         return product_repository.update(db, db_obj=db_obj, obj_in=obj_in)
 
     def delete_product(self, db: Session, product_id: int) -> Product:
-        # Verify it exists
-        db_obj = self.get_product_by_id(db, product_id)
-        return product_repository.delete(db, product_id=product_id)
+        self.get_product_by_id(db, product_id)
+        try:
+            return product_repository.delete(db, product_id=product_id)
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Product cannot be deleted because one or more orders reference it."
+            )
 
 product_service = ProductService()

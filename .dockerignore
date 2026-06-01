@@ -1,0 +1,17 @@
+# Root dockerignore
+.git
+.github
+.vscode
+.idea
+.env
+.env.*
+*.log
+venv/
+node_modules/
+dist/
+build/
+backend/venv/
+frontend/node_modules/
+frontend/dist/
+db_data/
+pgdata/

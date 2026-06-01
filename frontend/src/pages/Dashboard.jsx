@@ -1,102 +1,148 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Package, Users, ShoppingCart, AlertTriangle, ArrowRight } from "lucide-react";
+import {
+  ArrowRight,
+  Boxes,
+  CalendarDays,
+  Package,
+  ShoppingCart,
+  Users,
+} from "lucide-react";
 
 import { getDashboardStats } from "../services/dashboardService";
+import { getRecentOrders } from "../services/orderService";
 import Card from "../components/ui/Card";
 import Table from "../components/ui/Table";
+import Badge from "../components/ui/Badge";
+import ErrorState from "../components/ui/ErrorState";
+import PageHeader from "../components/ui/PageHeader";
+import { formatCurrency, formatDate, formatDateTime } from "../utils/formatters";
+import { getLowStockStatus, getOrderStatus } from "../utils/status";
 
 const Dashboard = () => {
-  const { data: stats, isLoading, error } = useQuery({
+  const today = formatDate(new Date(), {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  const {
+    data: stats,
+    isLoading: isStatsLoading,
+    error: statsError,
+  } = useQuery({
     queryKey: ["dashboardStats"],
     queryFn: getDashboardStats,
   });
 
-  const cardsData = [
+  const {
+    data: recentOrders = [],
+    isLoading: isOrdersLoading,
+    error: recentOrdersError,
+  } = useQuery({
+    queryKey: ["recentOrders"],
+    queryFn: () => getRecentOrders(5),
+  });
+
+  const lowStockItems = stats?.low_stock_products ?? [];
+
+  const kpiCards = [
     {
       title: "Total Products",
       value: stats?.total_products ?? 0,
       icon: Package,
-      color: "var(--primary)",
-      bgColor: "var(--primary-light)",
-      link: "/products"
+      accentClass: "kpi-primary",
+      helper: "Products currently in your catalog",
+      trend: "Catalog looks updated",
+      link: "/products",
     },
     {
-      title: "Active Customers",
+      title: "Total Customers",
       value: stats?.total_customers ?? 0,
       icon: Users,
-      color: "var(--success)",
-      bgColor: "var(--success-light)",
-      link: "/customers"
+      accentClass: "kpi-success",
+      helper: "Customers saved in the system",
+      trend: "Customer list growing",
+      link: "/customers",
     },
     {
-      title: "Orders Placed",
+      title: "Total Orders",
       value: stats?.total_orders ?? 0,
       icon: ShoppingCart,
-      color: "#eab308",
-      bgColor: "#fef9c3",
-      link: "/orders"
-    }
+      accentClass: "kpi-warning",
+      helper: "Orders created so far",
+      trend: "Orders coming in steadily",
+      link: "/orders",
+    },
+    {
+      title: "Low Stock Items",
+      value: lowStockItems.length,
+      icon: Boxes,
+      accentClass: "kpi-danger",
+      helper: "Products that need stock attention",
+      trend: lowStockItems.length > 0 ? "Check these items soon" : "Stock is in good shape",
+      link: "/products",
+    },
   ];
 
   const lowStockHeaders = [
-    { label: "Product Name", style: { width: "40%" } },
-    { label: "SKU / Code", style: { width: "30%" } },
-    { label: "Stock Left", style: { width: "30%" } },
+    { label: "Product Name", style: { width: "32%" } },
+    { label: "SKU", style: { width: "18%" } },
+    { label: "Stock", style: { width: "16%" } },
+    { label: "Status", style: { width: "18%" } },
+    { label: "Action", style: { width: "16%", textAlign: "right" } },
+  ];
+
+  const recentOrdersHeaders = [
+    { label: "Order", style: { width: "15%" } },
+    { label: "Customer", style: { width: "28%" } },
+    { label: "Amount", style: { width: "18%" } },
+    { label: "Date", style: { width: "24%" } },
+    { label: "Status", style: { width: "15%" } },
   ];
 
   return (
-    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-      
-      {/* Quick stats grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "24px" }}>
-        {cardsData.map((card, idx) => {
+    <div className="page-stack animate-fade-in">
+      <PageHeader
+        eyebrow="Dashboard / Overview"
+        title="Inventory Overview"
+        description="Quickly check stock levels, customers, and recent orders from one place."
+        meta={
+          <div className="page-meta-chip">
+            <CalendarDays size={16} />
+            {today}
+          </div>
+        }
+      />
+
+      <div className="kpi-grid">
+        {kpiCards.map((card) => {
           const Icon = card.icon;
+
           return (
-            <Card key={idx} className="card-hover">
-              {isLoading ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  <div className="skeleton skeleton-text" style={{ width: "50%", height: "16px" }} />
-                  <div className="skeleton skeleton-text" style={{ width: "30%", height: "32px" }} />
+            <Card key={card.title} className={`card-hover kpi-card ${card.accentClass}`}>
+              {isStatsLoading ? (
+                <div style={{ display: "grid", gap: "14px" }}>
+                  <div className="skeleton skeleton-text" style={{ width: "40%", height: "14px", margin: 0 }} />
+                  <div className="skeleton skeleton-text" style={{ width: "55%", height: "34px", margin: 0 }} />
+                  <div className="skeleton skeleton-text" style={{ width: "65%", height: "14px", margin: 0 }} />
                 </div>
               ) : (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    <span style={{ fontSize: "0.8125rem", color: "var(--text-secondary)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.03em" }}>
-                      {card.title}
-                    </span>
-                    <span style={{ fontSize: "2rem", fontWeight: 800, color: "var(--text-primary)", fontFamily: "'Outfit', sans-serif" }}>
-                      {card.value}
-                    </span>
-                    <Link 
-                      to={card.link} 
-                      style={{ 
-                        fontSize: "0.75rem", 
-                        color: card.color, 
-                        textDecoration: "none", 
-                        fontWeight: 700, 
-                        display: "flex", 
-                        alignItems: "center", 
-                        gap: "4px",
-                        marginTop: "8px" 
-                      }}
-                    >
-                      Manage Directory <ArrowRight size={12} />
-                    </Link>
+                <div className="kpi-card-content">
+                  <div className="kpi-card-copy">
+                    <span className="kpi-label">{card.title}</span>
+                    <strong className="kpi-value">{card.value}</strong>
+                    <span className="kpi-helper">{card.helper}</span>
+                    <div className="kpi-footer">
+                      <Badge variant="info">{card.trend}</Badge>
+                      <Link to={card.link} className="inline-link">
+                        View details <ArrowRight size={14} />
+                      </Link>
+                    </div>
                   </div>
-                  <div 
-                    style={{ 
-                      width: "56px", 
-                      height: "56px", 
-                      borderRadius: "16px", 
-                      backgroundColor: card.bgColor, 
-                      color: card.color, 
-                      display: "flex", 
-                      alignItems: "center", 
-                      justifyContent: "center" 
-                    }}
-                  >
+                  <div className="kpi-icon-shell">
                     <Icon size={24} />
                   </div>
                 </div>
@@ -106,69 +152,106 @@ const Dashboard = () => {
         })}
       </div>
 
-      {/* Warnings & Tables */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: "24px" }}>
-        
-        {/* Low Stock Watchlist */}
-        <Card title="Low Stock Watchlist">
-          {error ? (
-            <div style={{ color: "var(--danger)", padding: "12px 0" }}>Failed to load dashboard metrics.</div>
+      <div className="dashboard-grid">
+        <Card
+          title="Low Stock Watchlist"
+          subtitle="Prioritize replenishment before items become unavailable."
+          headerAction={<Badge variant="warning">{lowStockItems.length} flagged</Badge>}
+        >
+          {statsError ? (
+            <ErrorState title="Unable to load stock watchlist" message={statsError.message} />
           ) : (
             <Table
               headers={lowStockHeaders}
-              isLoading={isLoading}
-              isEmpty={stats?.low_stock_products?.length === 0}
-              emptyMessage="All products are well stocked! No low-stock items detected."
-              skeletonRows={3}
+              isLoading={isStatsLoading}
+              isEmpty={lowStockItems.length === 0}
+              emptyTitle="Inventory is healthy"
+              emptyMessage="No products currently need replenishment attention."
+              emptyIcon={Boxes}
+              skeletonRows={4}
             >
-              {stats?.low_stock_products?.map((prod) => (
-                <tr key={prod.id} className="table-row">
-                  <td className="td" style={{ fontWeight: 600 }}>{prod.name}</td>
-                  <td className="td">
-                    <code style={{ fontSize: "0.8125rem", padding: "2px 6px", backgroundColor: "#f1f5f9", borderRadius: "4px" }}>
-                      {prod.sku}
-                    </code>
-                  </td>
-                  <td className="td">
-                    <span 
-                      className="badge badge-danger" 
-                      style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}
-                    >
-                      <AlertTriangle size={12} />
-                      {prod.stock_quantity} remaining
-                    </span>
-                  </td>
-                </tr>
-              ))}
+              {lowStockItems.map((product) => {
+                const stockStatus = getLowStockStatus(product.stock_quantity);
+
+                return (
+                  <tr key={product.id} className="table-row">
+                    <td className="td">
+                      <div className="entity-cell">
+                        <span className="entity-title">{product.name}</span>
+                        <span className="entity-meta">Added {formatDate(product.created_at)}</span>
+                      </div>
+                    </td>
+                    <td className="td">
+                      <code className="code-pill">{product.sku}</code>
+                    </td>
+                    <td className="td" style={{ fontWeight: 700 }}>
+                      {product.stock_quantity}
+                    </td>
+                    <td className="td">
+                      <Badge variant={stockStatus.variant}>{stockStatus.label}</Badge>
+                    </td>
+                    <td className="td" style={{ textAlign: "right" }}>
+                      <Link to="/products" className="inline-action-link">
+                        Edit inventory
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </Table>
           )}
         </Card>
 
-        {/* Informative instructions / usage panel */}
-        <Card title="System Instructions">
-          <div style={{ display: "flex", flexDirection: "column", gap: "16px", color: "var(--text-secondary)", fontSize: "0.875rem", lineHeight: "1.6" }}>
-            <p>
-              Welcome to the administrative portal. To perform standard workflows, proceed with these steps:
-            </p>
-            <ol style={{ paddingLeft: "20px", display: "flex", flexDirection: "column", gap: "8px" }}>
-              <li>
-                <strong>Register Products:</strong> Add products to catalog under the <Link to="/products" style={{ color: "var(--primary)", fontWeight: 600, textDecoration: "none" }}>Products</Link> section. Ensure each has a unique SKU and non-negative stock.
-              </li>
-              <li>
-                <strong>Add Customers:</strong> Record clients and email details under the <Link to="/customers" style={{ color: "var(--primary)", fontWeight: 600, textDecoration: "none" }}>Customers</Link> directory.
-              </li>
-              <li>
-                <strong>Create Orders:</strong> Create customer orders under the <Link to="/orders" style={{ color: "var(--primary)", fontWeight: 600, textDecoration: "none" }}>Orders</Link> dashboard. Creating an order checks catalog stock and auto-deducts inventory levels.
-              </li>
-            </ol>
-            <p style={{ fontSize: "0.8125rem", fontStyle: "italic", color: "var(--text-muted)", borderTop: "1px solid var(--surface-border)", paddingTop: "12px" }}>
-              Note: System locks stock levels during order creation. If an order is canceled, the stock is automatically restored to the inventory pool.
-            </p>
-          </div>
+        <Card
+          title="Recent Orders"
+          subtitle="Latest submitted orders flowing through the system."
+          headerAction={
+            <Link to="/orders" className="inline-link">
+              View all <ArrowRight size={14} />
+            </Link>
+          }
+        >
+          {recentOrdersError ? (
+            <ErrorState title="Unable to load recent orders" message={recentOrdersError.message} />
+          ) : (
+            <Table
+              headers={recentOrdersHeaders}
+              isLoading={isOrdersLoading}
+              isEmpty={recentOrders.length === 0}
+              emptyTitle="No recent orders"
+              emptyMessage="Create the first order to start populating this operational feed."
+              emptyIcon={ShoppingCart}
+              emptyAction={<Link to="/orders" className="btn btn-primary">Create order</Link>}
+              skeletonRows={5}
+            >
+              {recentOrders.map((order) => {
+                const status = getOrderStatus(order.status);
+
+                return (
+                  <tr key={order.id} className="table-row">
+                    <td className="td">
+                      <span className="entity-title">#{order.id}</span>
+                    </td>
+                    <td className="td">
+                      <div className="entity-cell">
+                        <span className="entity-title">{order.customer?.full_name ?? "Unknown customer"}</span>
+                        <span className="entity-meta">{order.items?.length ?? 0} line items</span>
+                      </div>
+                    </td>
+                    <td className="td" style={{ fontWeight: 700, color: "var(--primary)" }}>
+                      {formatCurrency(order.total_amount)}
+                    </td>
+                    <td className="td">{formatDateTime(order.created_at)}</td>
+                    <td className="td">
+                      <Badge variant={status.variant}>{status.label}</Badge>
+                    </td>
+                  </tr>
+                );
+              })}
+            </Table>
+          )}
         </Card>
-
       </div>
-
     </div>
   );
 };
